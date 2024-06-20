@@ -1,7 +1,7 @@
 import asyncio
 from random import choice
 from typing import Any, Coroutine
-from urllib.parse import urljoin, urlencode, quote_plus
+from urllib.parse import urljoin, urlencode, quote_plus, urlparse, urlunparse
 
 from bs4 import BeautifulSoup
 from httpx import AsyncClient, Response
@@ -86,11 +86,12 @@ class GitHubCrawler:
             str: The constructed search URL.
         """
         url = urljoin(self.base_url, 'search')
+        parsed_url = urlparse(url)
         params = {
             'q': quote_plus(' '.join(keywords)),
             'type': self.data['type'].lower()
         }
-        return f'{url}?{urlencode(params, safe='+')}'
+        return urlunparse((parsed_url.scheme, parsed_url.netloc, parsed_url.path, '', urlencode(params, safe='+'), ''))
 
     async def fetch_html_soups(self, client: AsyncClient, urls: list[str]) -> list[BeautifulSoup]:
         coros: list[Coroutine[Any, Any, Response]] = [self.fetch_url_content(client, url, self.headers) for url in urls]
