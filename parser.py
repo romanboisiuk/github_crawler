@@ -1,8 +1,14 @@
 import asyncio
 from random import choice
 from typing import Any, Coroutine
-from urllib.parse import urljoin, urlencode, quote_plus, urlparse, urlunparse
-
+from urllib.parse import (
+    urljoin,
+    urlencode,
+    quote_plus,
+    urlparse,
+    urlunparse,
+    ParseResult
+)
 from bs4 import BeautifulSoup
 from httpx import AsyncClient, Response
 from loguru import logger
@@ -85,9 +91,9 @@ class GitHubCrawler:
         Returns:
             str: The constructed search URL.
         """
-        url = urljoin(self.base_url, 'search')
-        parsed_url = urlparse(url)
-        params = {
+        url: str = urljoin(self.base_url, 'search')
+        parsed_url: ParseResult = urlparse(url)
+        params: dict[str, str] = {
             'q': quote_plus(' '.join(keywords)),
             'type': self.data['type'].lower()
         }
