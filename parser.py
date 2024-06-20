@@ -24,16 +24,16 @@ class GitHubCrawler:
         self.data: dict[str, Any] = data
 
     @staticmethod
-    def get_lang_stats(items: list) -> dict[str, Any]:
+    def get_lang_stats(soup: BeautifulSoup) -> dict[str, Any]:
         """
         Extracts language statistics from the given HTML elements.
         Args:
-            items (list): A list of BeautifulSoup elements containing language stats.
+            soup: BeautifulSoup
         Returns:
             dict[str, Any]: A dictionary containing the language statistics.
         """
         lang_stats_data: dict[str, Any] = {}
-        for item in items:
+        for item in soup.select('.d-inline-flex.flex-items-center'):
             language_stats = item.select('span')
             lang_stats_data[language_stats[0].text] = language_stats[1].text
         return lang_stats_data
@@ -51,6 +51,10 @@ class GitHubCrawler:
         """
         return await client.get(url, headers=headers)
 
+    @staticmethod
+    def get_owner(soup: BeautifulSoup) -> str:
+        return soup.select_one('[name=\'octolytics-dimension-user_login\']')['content']
+
     async def parse_repo(self, urls: list[str], client: AsyncClient) -> list[dict[str, Any]]:
         """
         Parses repository data from the given list of URLs.
@@ -61,17 +65,13 @@ class GitHubCrawler:
             list[dict[str, Any]]: A list of dictionaries containing parsed repository data.
         """
         repos_data: list[dict[str, Any]] = []
-        tasks: list[Task] = [asyncio.create_task(self.make_request(client, url)) for url in urls]
-        responses = await asyncio.gather(*tasks)
-        soups: list[BeautifulSoup] = [BeautifulSoup(response.text, 'lxml') for response in responses]
+        soups: list[BeautifulSoup] = await self.get_soups(client, urls)
         for soup, url in zip(soups, urls):
-            owner: str = soup.select_one('[name=\'octolytics-dimension-user_login\']')['content']
-            lang_stats: dict[str, Any] = self.get_lang_stats(soup.select('.d-inline-flex.flex-items-center'))
             repos_data.append({
                 'url': url,
                 'extra': {
-                    'owner': owner,
-                    'language_stats': lang_stats
+                    'owner': self.get_owner(soup),
+                    'language_stats': self.get_lang_stats(soup)
                 }
             })
         return repos_data
@@ -91,6 +91,11 @@ class GitHubCrawler:
         }
         return f'{url}?{urlencode(params)}'
 
+    async def get_soups(self, client: AsyncClient, urls: list[str]) -> list[BeautifulSoup]:
+        tasks: list[Task] = [asyncio.create_task(self.make_request(client, url, self.headers)) for url in urls]
+        responses = await asyncio.gather(*tasks)
+        return [BeautifulSoup(response.text, 'lxml') for response in responses]
+
     async def parse_data(self, client: AsyncClient) -> list[dict[str, Any]]:
         """
         Parses data for the specified keywords.
@@ -101,9 +106,7 @@ class GitHubCrawler:
         """
         repos_data: list[dict[str, Any]] = []
         keyword_urls: list[str] = [self.parse_url(keyword) for keyword in self.data['keywords']]
-        tasks: list[Task] = [asyncio.create_task(self.make_request(client, url, self.headers)) for url in keyword_urls]
-        responses = await asyncio.gather(*tasks)
-        soups: list[BeautifulSoup] = [BeautifulSoup(response.text, 'lxml') for response in responses]
+        soups: list[BeautifulSoup] = await self.get_soups(client, keyword_urls)
         for soup in soups:
             urls: list[str] = [urljoin(self.base_url, item['href']) for item in soup.select('.search-title > a')]
             parse_repo = await self.parse_repo(urls, client)
