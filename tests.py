@@ -32,19 +32,30 @@ class TestGitHubCrawler(IsolatedAsyncioTestCase):
 
     def test_get_lang_stats_multiple_items(self):
         html = '''
-        <div><span>Python</span><span>50%</span></div>
-        <div><span>JavaScript</span><span>30%</span></div>
-        <div><span>Java</span><span>20%</span></div>
+        <div class='d-inline-flex flex-items-center'>
+            <span>Python</span><span>50%</span>
+        </div>
+        <div class='d-inline-flex flex-items-center'>
+            <span>JavaScript</span><span>30%</span>
+        </div>
+        <div class='d-inline-flex flex-items-center'>
+            <span>Java</span><span>20%</span>
+        </div>
         '''
         soup = BeautifulSoup(html, 'lxml')
-        items = soup.select('div')
         expected_result = {
             'Python': '50%',
             'JavaScript': '30%',
             'Java': '20%'
         }
-        actual_result = self.crawler.get_lang_stats(items)
+        actual_result = self.crawler.get_lang_stats(soup)
         self.assertEqual(expected_result, actual_result)
+
+    def test_get_owner(self):
+        html_content = "<html><head><meta name='octolytics-dimension-user_login' content='testuser'></head></html>"
+        soup = BeautifulSoup(html_content, 'lxml')
+        owner = self.crawler.get_owner(soup)
+        self.assertEqual(owner, 'testuser')
 
     def test_parse_url(self):
         keyword = 'testkeyword'
@@ -52,9 +63,10 @@ class TestGitHubCrawler(IsolatedAsyncioTestCase):
         actual_url = self.crawler.parse_url(keyword)
         self.assertEqual(expected_url, actual_url)
 
+    @patch.object(GitHubCrawler, 'get_owner', return_value='test_owner')
     @patch.object(GitHubCrawler, 'get_lang_stats', return_value={'Python': '100%'})
-    @patch.object(GitHubCrawler, 'make_request', new_callable=AsyncMock)
-    async def test_parse_repo(self, mock_make_request, mock_get_lang_stats):
+    @patch.object(GitHubCrawler, 'get_soups')
+    async def test_parse_repo(self, mock_get_soups, mock_get_lang_stats, mock_get_owner):
         mock_response = MagicMock()
         mock_response.text = """
         <html>
@@ -64,7 +76,7 @@ class TestGitHubCrawler(IsolatedAsyncioTestCase):
             </div>
         </html>
         """
-        mock_make_request.side_effect = [mock_response, mock_response]
+        mock_get_soups.return_value = [mock_response, mock_response]
         urls = ['http://test_url1', 'http://test_url2']
         result = await self.crawler.parse_repo(urls, self.client)
         expected_result = [
@@ -84,12 +96,13 @@ class TestGitHubCrawler(IsolatedAsyncioTestCase):
             }
         ]
         self.assertEqual(result, expected_result)
-        mock_make_request.assert_awaited()
+        mock_get_soups.assert_awaited()
         mock_get_lang_stats.assert_called()
+        mock_get_owner.assert_called()
 
-    @patch.object(GitHubCrawler, 'parse_repo', new_callable=AsyncMock)
-    @patch.object(GitHubCrawler, 'make_request', new_callable=AsyncMock)
-    async def test_parse_data(self, mock_make_request, mock_parse_repo):
+    @patch.object(GitHubCrawler, 'parse_repo')
+    @patch.object(GitHubCrawler, 'get_soups')
+    async def test_parse_data(self, mock_get_soups, mock_parse_repo):
         search_response = MagicMock()
         search_response.text = """
         <html>
@@ -99,7 +112,7 @@ class TestGitHubCrawler(IsolatedAsyncioTestCase):
             </div>
         </html>
         """
-        mock_make_request.side_effect = [search_response, search_response, search_response]
+        mock_get_soups.return_value = [search_response, search_response, search_response]
         repo_data = [
             {
                 'url': 'https://github.com/test_repo1',
@@ -111,18 +124,17 @@ class TestGitHubCrawler(IsolatedAsyncioTestCase):
             {
                 'url': 'https://github.com/test_repo2',
                 'extra': {
-                    'owner': 'test_owner',
-                    'language_stats': {"Python": "100%"}
+                    'owner': 'test_owner2',
+                    'language_stats': {"Python": "50%"}
                 }
             }
         ]
-        mock_parse_repo.side_effect = [repo_data, repo_data]
-        with self.assertRaises(StopAsyncIteration):
-            result = await self.crawler.parse_data(self.client)
-            expected_result = repo_data * 3
-            self.assertNotEquals(result, expected_result)
-            mock_make_request.assert_not_awaited()
-            mock_parse_repo.assert_awaited()
+        mock_parse_repo.return_value = repo_data
+        result = await self.crawler.parse_data(self.client)
+        expected_result = repo_data * 3
+        self.assertEqual(result, expected_result)
+        mock_get_soups.assert_awaited()
+        mock_parse_repo.assert_awaited()
 
     @patch('parser.choice')
     @patch('parser.AsyncClient')
