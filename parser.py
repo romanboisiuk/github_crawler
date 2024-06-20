@@ -1,5 +1,4 @@
 import asyncio
-from asyncio import run
 from random import choice
 from typing import Any, Coroutine
 from urllib.parse import urljoin, urlencode, quote_plus
@@ -140,4 +139,4 @@ if __name__ == '__main__':
         ],
         'type': 'Repositories'
     }
-    run(GitHubCrawler(base_url, data).run_crawler())
+    asyncio.run(GitHubCrawler(base_url, data).run_crawler())
