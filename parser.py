@@ -1,8 +1,8 @@
 import asyncio
-from asyncio import run, Task
+from asyncio import run
 from random import choice
-from typing import Any
-from urllib.parse import urljoin, urlencode
+from typing import Any, Coroutine
+from urllib.parse import urljoin, urlencode, quote_plus
 
 from bs4 import BeautifulSoup
 from httpx import AsyncClient, Response
@@ -78,24 +78,24 @@ class GitHubCrawler:
             repositories.append(repo_data)
         return repositories
 
-    def build_search_url(self, keyword: str) -> str:
+    def build_search_url(self, keywords: list) -> str:
         """
         Constructs a search URL for the given keyword.
         Args:
-            keyword (str): The search keyword.
+            keywords (list): The search keyword.
         Returns:
             str: The constructed search URL.
         """
         url = urljoin(self.base_url, 'search')
         params = {
-            'q': keyword,
+            'q': quote_plus(' '.join(keywords)),
             'type': self.data['type'].lower()
         }
-        return f'{url}?{urlencode(params)}'
+        return f'{url}?{urlencode(params, safe='+')}'
 
     async def fetch_html_soups(self, client: AsyncClient, urls: list[str]) -> list[BeautifulSoup]:
-        tasks: list[Task] = [asyncio.create_task(self.fetch_url_content(client, url, self.headers)) for url in urls]
-        responses = await asyncio.gather(*tasks)
+        coros: list[Coroutine[Any, Any, Response]] = [self.fetch_url_content(client, url, self.headers) for url in urls]
+        responses = await asyncio.gather(*coros)
         return [BeautifulSoup(response.text, 'lxml') for response in responses]
 
     async def gather_data(self, client: AsyncClient) -> list[dict[str, Any]]:
@@ -106,14 +106,12 @@ class GitHubCrawler:
         Returns:
             list[dict[str, Any]]: A list of dictionaries containing parsed data.
         """
-        all_repositories: list[dict[str, Any]] = []
-        keyword_urls: list[str] = [self.build_search_url(keyword) for keyword in self.data['keywords']]
-        soups: list[BeautifulSoup] = await self.fetch_html_soups(client, keyword_urls)
-        for soup in soups:
-            repo_urls: list[str] = [urljoin(self.base_url, item['href']) for item in soup.select('.search-title > a')]
-            repository_data = await self.parse_repository_data(repo_urls, client)
-            all_repositories.extend(repository_data)
-        return all_repositories
+        url: str = self.build_search_url(self.data['keywords'])
+        response: Response = await self.fetch_url_content(client, url, self.headers)
+        soup: BeautifulSoup = BeautifulSoup(response.text, 'lxml')
+        repo_urls: list[str] = [urljoin(self.base_url, item['href']) for item in soup.select('.search-title > a')]
+        repository_data: list[dict[str, Any]] = await self.parse_repository_data(repo_urls, client)
+        return repository_data
 
     async def run_crawler(self):
         """

@@ -58,9 +58,9 @@ class TestGitHubCrawler(IsolatedAsyncioTestCase):
         self.assertEqual(owner, 'testuser')
 
     def test_build_search_url(self):
-        keyword = 'testkeyword'
-        expected_url = 'https://github.com/search?q=testkeyword&type=repositories'
-        actual_url = self.crawler.build_search_url(keyword)
+        keywords = ['testkeyword', 'testkeyword2']
+        expected_url = 'https://github.com/search?q=testkeyword+testkeyword2&type=repositories'
+        actual_url = self.crawler.build_search_url(keywords)
         self.assertEqual(expected_url, actual_url)
 
     @patch.object(GitHubCrawler, 'extract_repository_owner', return_value='test_owner')
@@ -101,8 +101,8 @@ class TestGitHubCrawler(IsolatedAsyncioTestCase):
         mock_get_owner.assert_called()
 
     @patch.object(GitHubCrawler, 'parse_repository_data')
-    @patch.object(GitHubCrawler, 'fetch_html_soups')
-    async def test_gather_data(self, mock_fetch_html_soups, mock_repository_data):
+    @patch.object(GitHubCrawler, 'fetch_url_content')
+    async def test_gather_data(self, mock_fetch_url_content, mock_repository_data):
         search_response = MagicMock()
         search_response.text = '''
         <html>
@@ -112,8 +112,8 @@ class TestGitHubCrawler(IsolatedAsyncioTestCase):
             </div>
         </html>
         '''
-        mock_fetch_html_soups.return_value = [search_response, search_response, search_response]
-        repo_data = [
+        mock_fetch_url_content.return_value = search_response
+        expected_result = [
             {
                 'url': 'https://github.com/test_repo1',
                 'extra': {
@@ -129,11 +129,10 @@ class TestGitHubCrawler(IsolatedAsyncioTestCase):
                 }
             }
         ]
-        mock_repository_data.return_value = repo_data
+        mock_repository_data.return_value = expected_result
         result = await self.crawler.gather_data(self.client)
-        expected_result = repo_data * 3
         self.assertEqual(result, expected_result)
-        mock_fetch_html_soups.assert_awaited()
+        mock_fetch_url_content.assert_awaited()
         mock_repository_data.assert_awaited()
 
     @patch('parser.choice')
