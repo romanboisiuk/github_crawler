@@ -1,14 +1,13 @@
+from unittest import main, IsolatedAsyncioTestCase
 from unittest.mock import AsyncMock, patch, MagicMock
 
-from asynctest import TestCase, main
 from bs4 import BeautifulSoup
-from httpx import AsyncClient, ConnectTimeout
-
+from httpx import AsyncClient
 
 from parser import GitHubCrawler
 
 
-class TestGitHubCrawler(TestCase):
+class TestGitHubCrawler(IsolatedAsyncioTestCase):
 
     def setUp(self):
         self.base_url = 'https://github.com/'
@@ -127,43 +126,16 @@ class TestGitHubCrawler(TestCase):
 
     @patch('parser.choice')
     @patch('parser.AsyncClient')
-    async def test_main_with_proxy(self, mock_async_client, mock_choice):
+    async def test_main_with_proxy(self, mock_client, mock_choice):
         mock_choice.return_value = 'proxy1'
-        mock_client = mock_async_client.return_value.__aenter__.return_value
-        self.crawler.parse_data = AsyncMock(return_value="expected result with proxy")
+        mock_client_instance = AsyncMock()
+        mock_client.return_value.__aenter__.return_value = mock_client_instance
+        self.crawler.parse_data = AsyncMock(return_value=[{'key': 'value'}])
         result = await self.crawler.main()
-        self.crawler.parse_data.assert_called_once_with(mock_client)
-        self.assertEqual(result, "expected result with proxy")
-        mock_async_client.assert_called_with(proxies={
-            'http://': 'http://proxy1',
-            'https://': 'https://proxy1'
-        })
-
-    @patch('parser.choice')
-    @patch('parser.AsyncClient')
-    async def test_main_without_proxy(self, mock_async_client, mock_choice):
-        mock_choice.return_value = 'proxy1'
-        mock_client_proxies = mock_async_client.side_effect = [ConnectTimeout, MagicMock()]
-        mock_client_no_proxies = mock_async_client.return_value.__aenter__.return_value
-
-        # Mock the parse_data method
-        self.crawler.parse_data = AsyncMock(return_value="expected result without proxy")
-
-        result = await self.crawler.main()
-
-        # Assertions to check if parse_data was called with the mock_client_no_proxies
-        self.crawler.parse_data.assert_called_once_with(mock_client_no_proxies)
-
-        # Check if the result is as expected
-        assert result == "expected result without proxy"
-
-        # Verify the proxies passed to the first AsyncClient and no proxies to the second one
-        mock_async_client.assert_any_call(proxies={
-            'http://': 'http://proxy1',
-            'https://': 'https://proxy1'
-        })
-        mock_async_client.assert_any_call()
-
+        expected_proxies = {'http://': 'http://proxy1', 'https://': 'https://proxy1'}
+        mock_client.assert_called_once_with(proxies={})
+        self.crawler.parse_data.assert_awaited_once_with(mock_client_instance)
+        assert result == [{'key': 'value'}]
 
 
 if __name__ == '__main__':

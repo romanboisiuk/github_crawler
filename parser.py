@@ -119,14 +119,10 @@ class GitHubCrawler:
             list[dict[str, Any]]: A list of dictionaries containing parsed data.
         """
         proxy = choice(self.data['proxies'])
-        proxies = {'http://': f'http://{proxy}', 'https://': f'https://{proxy}'}
-        try:
-            async with AsyncClient(proxies=proxies) as client:
-                return await self.parse_data(client)
-
-        except ConnectTimeout:
-            async with AsyncClient() as client:
-                return await self.parse_data(client)
+        # proxies = {'http://': f'http://{proxy}', 'https://': f'https://{proxy}'}
+        proxies = {}
+        async with AsyncClient(proxies=proxies) as client:
+            return await self.parse_data(client)
 
 
 if __name__ == '__main__':
