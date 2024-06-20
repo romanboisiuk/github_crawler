@@ -39,13 +39,13 @@ class GitHubCrawler:
         return lang_stats_data
 
     @staticmethod
-    async def make_request(client: AsyncClient, url: str, headers=None) -> Response:
+    async def make_request(client: AsyncClient, url: str, headers: dict) -> Response:
         """
         Makes an asynchronous GET request to the given URL.
         Args:
             client (AsyncClient): The HTTPX asynchronous client.
             url (str): The URL to send the GET request to.
-            headers (dict, optional): Additional headers to include in the request.
+            headers (dict): Additional headers to include in the request.
         Returns:
             Response: The HTTPX response object.
         """

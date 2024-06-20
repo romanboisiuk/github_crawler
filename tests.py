@@ -9,7 +9,7 @@ from parser import GitHubCrawler
 
 class TestGitHubCrawler(IsolatedAsyncioTestCase):
 
-    def setUp(self):
+    async def asyncSetUp(self):
         self.base_url = 'https://github.com/'
         self.headers = {'Accept': 'text/html'}
         self.data = {
@@ -23,12 +23,12 @@ class TestGitHubCrawler(IsolatedAsyncioTestCase):
     async def test_make_request(self):
         response_mock = AsyncMock()
         response_mock.status_code = 200
-        response_mock.json = AsyncMock(return_value={"key": "value"})
+        response_mock.json = AsyncMock(return_value={'key': 'value'})
         self.client.get = AsyncMock(return_value=response_mock)
         response = await self.crawler.make_request(self.client, self.base_url, self.headers)
         self.client.get.assert_awaited_once_with(self.base_url, headers=self.headers)
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(await response.json(), {"key": "value"})
+        self.assertEqual(await response.json(), {'key': 'value'})
 
     def test_get_lang_stats_multiple_items(self):
         html = '''
@@ -52,7 +52,7 @@ class TestGitHubCrawler(IsolatedAsyncioTestCase):
         self.assertEqual(expected_result, actual_result)
 
     def test_get_owner(self):
-        html_content = "<html><head><meta name='octolytics-dimension-user_login' content='testuser'></head></html>"
+        html_content = '<html><head><meta name=\'octolytics-dimension-user_login\' content=\'testuser\'></head></html>'
         soup = BeautifulSoup(html_content, 'lxml')
         owner = self.crawler.get_owner(soup)
         self.assertEqual(owner, 'testuser')
@@ -68,14 +68,14 @@ class TestGitHubCrawler(IsolatedAsyncioTestCase):
     @patch.object(GitHubCrawler, 'get_soups')
     async def test_parse_repo(self, mock_get_soups, mock_get_lang_stats, mock_get_owner):
         mock_response = MagicMock()
-        mock_response.text = """
+        mock_response.text = '''
         <html>
             <meta name='octolytics-dimension-user_login' content='test_owner'/>
             <div class='d-inline-flex flex-items-center'>
                 <span>Python</span><span>100%</span>
             </div>
         </html>
-        """
+        '''
         mock_get_soups.return_value = [mock_response, mock_response]
         urls = ['http://test_url1', 'http://test_url2']
         result = await self.crawler.parse_repo(urls, self.client)
@@ -104,28 +104,28 @@ class TestGitHubCrawler(IsolatedAsyncioTestCase):
     @patch.object(GitHubCrawler, 'get_soups')
     async def test_parse_data(self, mock_get_soups, mock_parse_repo):
         search_response = MagicMock()
-        search_response.text = """
+        search_response.text = '''
         <html>
             <div class='search-title'>
                 <a href='/test_repo1'></a>
                 <a href='/test_repo2'></a>
             </div>
         </html>
-        """
+        '''
         mock_get_soups.return_value = [search_response, search_response, search_response]
         repo_data = [
             {
                 'url': 'https://github.com/test_repo1',
                 'extra': {
                     'owner': 'test_owner',
-                    'language_stats': {"Python": "100%"}
+                    'language_stats': {'Python': '100%'}
                 }
             },
             {
                 'url': 'https://github.com/test_repo2',
                 'extra': {
                     'owner': 'test_owner2',
-                    'language_stats': {"Python": "50%"}
+                    'language_stats': {'Python': '50%'}
                 }
             }
         ]
@@ -148,6 +148,26 @@ class TestGitHubCrawler(IsolatedAsyncioTestCase):
         mock_client.assert_called_once_with(proxies={})
         self.crawler.parse_data.assert_awaited_once_with(mock_client_instance)
         assert result == [{'key': 'value'}]
+
+    @patch.object(GitHubCrawler, 'make_request')
+    async def test_get_soups(self, mock_make_request):
+        def mock_response(text):
+            mock_resp = MagicMock()
+            mock_resp.text = text
+            return mock_resp
+
+        response_texts = [
+            '<html><body>Content 1</body></html>',
+            '<html><body>Content 2</body></html>'
+        ]
+        mock_make_request.side_effect = [mock_response(text) for text in response_texts]
+        urls = ['https://example.com/page1', 'https://example.com/page2']
+        soups = await self.crawler.get_soups(self.client, urls)
+        self.assertIsInstance(soups, list)
+        self.assertEqual(len(soups), 2)
+        self.assertTrue(all(isinstance(soup, BeautifulSoup) for soup in soups))
+        self.assertEqual(soups[0].text, 'Content 1')
+        self.assertEqual(soups[1].text, 'Content 2')
 
 
 if __name__ == '__main__':
