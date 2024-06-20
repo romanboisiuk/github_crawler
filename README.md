@@ -15,3 +15,13 @@
    ```bash
    poetry install
    ```
+   
+3. Run the crawler
+   ```bash
+   python parser.py
+   ```
+
+4. Run the tests
+   ```bash
+   python -m unittest -v tests.py 
+   ```

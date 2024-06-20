@@ -24,7 +24,7 @@ class GitHubCrawler:
         self.data: dict[str, Any] = data
 
     @staticmethod
-    def get_lang_stats(soup: BeautifulSoup) -> dict[str, Any]:
+    def extract_language_statistics(soup: BeautifulSoup) -> dict[str, Any]:
         """
         Extracts language statistics from the given HTML elements.
         Args:
@@ -39,7 +39,7 @@ class GitHubCrawler:
         return lang_stats_data
 
     @staticmethod
-    async def make_request(client: AsyncClient, url: str, headers: dict) -> Response:
+    async def fetch_url_content(client: AsyncClient, url: str, headers: dict) -> Response:
         """
         Makes an asynchronous GET request to the given URL.
         Args:
@@ -52,10 +52,10 @@ class GitHubCrawler:
         return await client.get(url, headers=headers)
 
     @staticmethod
-    def get_owner(soup: BeautifulSoup) -> str:
+    def extract_repository_owner(soup: BeautifulSoup) -> str:
         return soup.select_one('[name=\'octolytics-dimension-user_login\']')['content']
 
-    async def parse_repo(self, urls: list[str], client: AsyncClient) -> list[dict[str, Any]]:
+    async def parse_repository_data(self, urls: list[str], client: AsyncClient) -> list[dict[str, Any]]:
         """
         Parses repository data from the given list of URLs.
         Args:
@@ -64,19 +64,21 @@ class GitHubCrawler:
         Returns:
             list[dict[str, Any]]: A list of dictionaries containing parsed repository data.
         """
-        repos_data: list[dict[str, Any]] = []
-        soups: list[BeautifulSoup] = await self.get_soups(client, urls)
-        for soup, url in zip(soups, urls):
-            repos_data.append({
+        repositories: list[dict[str, Any]] = []
+        page_soups: list[BeautifulSoup] = await self.fetch_html_soups(client, urls)
+        for soup, url in zip(page_soups, urls):
+            repo_data = {
                 'url': url,
                 'extra': {
-                    'owner': self.get_owner(soup),
-                    'language_stats': self.get_lang_stats(soup)
+                    'owner': self.extract_repository_owner(soup),
+                    'language_stats': self.extract_language_statistics(soup)
                 }
-            })
-        return repos_data
+            }
+            logger.debug(f'Repository data: {repo_data}')
+            repositories.append(repo_data)
+        return repositories
 
-    def parse_url(self, keyword: str) -> str:
+    def build_search_url(self, keyword: str) -> str:
         """
         Constructs a search URL for the given keyword.
         Args:
@@ -91,12 +93,12 @@ class GitHubCrawler:
         }
         return f'{url}?{urlencode(params)}'
 
-    async def get_soups(self, client: AsyncClient, urls: list[str]) -> list[BeautifulSoup]:
-        tasks: list[Task] = [asyncio.create_task(self.make_request(client, url, self.headers)) for url in urls]
+    async def fetch_html_soups(self, client: AsyncClient, urls: list[str]) -> list[BeautifulSoup]:
+        tasks: list[Task] = [asyncio.create_task(self.fetch_url_content(client, url, self.headers)) for url in urls]
         responses = await asyncio.gather(*tasks)
         return [BeautifulSoup(response.text, 'lxml') for response in responses]
 
-    async def parse_data(self, client: AsyncClient) -> list[dict[str, Any]]:
+    async def gather_data(self, client: AsyncClient) -> list[dict[str, Any]]:
         """
         Parses data for the specified keywords.
         Args:
@@ -104,17 +106,16 @@ class GitHubCrawler:
         Returns:
             list[dict[str, Any]]: A list of dictionaries containing parsed data.
         """
-        repos_data: list[dict[str, Any]] = []
-        keyword_urls: list[str] = [self.parse_url(keyword) for keyword in self.data['keywords']]
-        soups: list[BeautifulSoup] = await self.get_soups(client, keyword_urls)
+        all_repositories: list[dict[str, Any]] = []
+        keyword_urls: list[str] = [self.build_search_url(keyword) for keyword in self.data['keywords']]
+        soups: list[BeautifulSoup] = await self.fetch_html_soups(client, keyword_urls)
         for soup in soups:
-            urls: list[str] = [urljoin(self.base_url, item['href']) for item in soup.select('.search-title > a')]
-            parse_repo = await self.parse_repo(urls, client)
-            repos_data.extend(parse_repo)
-        logger.debug(repos_data)
-        return repos_data
+            repo_urls: list[str] = [urljoin(self.base_url, item['href']) for item in soup.select('.search-title > a')]
+            repository_data = await self.parse_repository_data(repo_urls, client)
+            all_repositories.extend(repository_data)
+        return all_repositories
 
-    async def main(self):
+    async def run_crawler(self):
         """
         The main method to execute the GitHub crawler.
         Selects a random proxy, creates an asynchronous client, and parses data.
@@ -125,7 +126,7 @@ class GitHubCrawler:
         # proxies = {'http://': f'http://{proxy}', 'https://': f'https://{proxy}'}
         proxies = {}
         async with AsyncClient(proxies=proxies) as client:
-            return await self.parse_data(client)
+            return await self.gather_data(client)
 
 
 if __name__ == '__main__':
@@ -141,4 +142,4 @@ if __name__ == '__main__':
         ],
         'type': 'Repositories'
     }
-    run(GitHubCrawler(base_url, data).main())
+    run(GitHubCrawler(base_url, data).run_crawler())
