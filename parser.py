@@ -5,7 +5,7 @@ from typing import Any
 from urllib.parse import urljoin, urlencode
 
 from bs4 import BeautifulSoup
-from httpx import AsyncClient, ConnectTimeout
+from httpx import AsyncClient, Response
 from loguru import logger
 
 
@@ -39,7 +39,7 @@ class GitHubCrawler:
         return lang_stats_data
 
     @staticmethod
-    async def make_request(client: AsyncClient, url: str, headers=None):
+    async def make_request(client: AsyncClient, url: str, headers=None) -> Response:
         """
         Makes an asynchronous GET request to the given URL.
         Args:
