@@ -1,8 +1,8 @@
 from unittest import main, IsolatedAsyncioTestCase
-from unittest.mock import AsyncMock, patch, MagicMock
+from unittest.mock import AsyncMock, patch, MagicMock, call
 
 from bs4 import BeautifulSoup
-from httpx import AsyncClient
+from httpx import AsyncClient, ConnectTimeout, Response
 
 from parser import GitHubCrawler
 
@@ -20,15 +20,34 @@ class TestGitHubCrawler(IsolatedAsyncioTestCase):
         self.crawler = GitHubCrawler(self.base_url, self.data)
         self.client = AsyncMock(AsyncClient)
 
-    async def test_fetch_url_content(self):
-        response_mock = AsyncMock()
-        response_mock.status_code = 200
-        response_mock.json = AsyncMock(return_value={'key': 'value'})
-        self.client.get = AsyncMock(return_value=response_mock)
-        response = await self.crawler.fetch_url_content(self.client, self.base_url, self.headers)
-        self.client.get.assert_awaited_once_with(self.base_url, headers=self.headers)
+    @patch('parser.choice')
+    @patch('parser.AsyncClient')
+    async def test_fetch_url_content_success(self, mock_client, mock_choice):
+        mock_client = mock_client.return_value.__aenter__.return_value
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_client.get = AsyncMock(return_value=mock_response)
+        response = await self.crawler.fetch_url_content(self.base_url, self.headers)
+        mock_client.get.assert_awaited_once_with(self.base_url, headers=self.headers)
+        mock_choice.assert_not_called()
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(await response.json(), {'key': 'value'})
+        self.assertEqual(response, mock_response)
+
+    @patch('parser.choice', return_value='proxy1')
+    @patch('parser.AsyncClient')
+    async def test_fetch_url_content_retry_on_exception(self, mock_client, mock_choice):
+        connect_timeout_error = ConnectTimeout('Connect timeout', request=None)
+        mock_response = AsyncMock(spec=Response)
+        mock_response.status_code = 200
+        mock_client.return_value.__aenter__.return_value.get.side_effect = [
+            connect_timeout_error,
+            AsyncMock(spec=Response)
+        ]
+        await self.crawler.fetch_url_content(self.base_url, self.headers)
+        self.assertEqual(mock_client.return_value.__aenter__.return_value.get.call_count, 2)
+        calls = [call(self.base_url, headers=self.headers)] * 2
+        mock_client.return_value.__aenter__.return_value.get.assert_has_calls(calls)
+        mock_choice.assert_has_calls([call(self.data['proxies'])])
 
     def test_extract_language_statistics(self):
         html = '''
@@ -78,7 +97,7 @@ class TestGitHubCrawler(IsolatedAsyncioTestCase):
         '''
         mock_fetch_html_soups.return_value = [mock_response, mock_response]
         urls = ['http://test_url1', 'http://test_url2']
-        result = await self.crawler.parse_repository_data(urls, self.client)
+        result = await self.crawler.parse_repository_data(urls)
         expected_result = [
             {
                 'url': 'http://test_url1',
@@ -130,23 +149,17 @@ class TestGitHubCrawler(IsolatedAsyncioTestCase):
             }
         ]
         mock_repository_data.return_value = expected_result
-        result = await self.crawler.gather_data(self.client)
+        result = await self.crawler.gather_data()
         self.assertEqual(result, expected_result)
         mock_fetch_url_content.assert_awaited()
         mock_repository_data.assert_awaited()
 
-    @patch('parser.choice')
-    @patch('parser.AsyncClient')
-    async def test_run_crawler(self, mock_client, mock_choice):
-        mock_choice.return_value = 'proxy1'
-        mock_client_instance = AsyncMock()
-        mock_client.return_value.__aenter__.return_value = mock_client_instance
-        self.crawler.gather_data = AsyncMock(return_value=[{'key': 'value'}])
+    @patch.object(GitHubCrawler, 'gather_data')
+    async def test_run_crawler(self, mock_gather_data):
+        mock_response = AsyncMock(return_value=[{'key': 'value'}])
+        mock_gather_data.return_value = mock_response
         result = await self.crawler.run_crawler()
-        expected_proxies = {'http://': 'http://proxy1', 'https://': 'https://proxy1'}
-        mock_client.assert_called_once_with(proxies={})
-        self.crawler.gather_data.assert_awaited_once_with(mock_client_instance)
-        assert result == [{'key': 'value'}]
+        assert result == mock_response
 
     @patch.object(GitHubCrawler, 'fetch_url_content')
     async def test_fetch_html_soups(self, mock_fetch_url_content):
@@ -161,7 +174,7 @@ class TestGitHubCrawler(IsolatedAsyncioTestCase):
         ]
         mock_fetch_url_content.side_effect = [mock_response(text) for text in response_texts]
         urls = ['https://example.com/page1', 'https://example.com/page2']
-        soups = await self.crawler.fetch_html_soups(self.client, urls)
+        soups = await self.crawler.fetch_html_soups(urls)
         self.assertIsInstance(soups, list)
         self.assertEqual(len(soups), 2)
         self.assertTrue(all(isinstance(soup, BeautifulSoup) for soup in soups))
