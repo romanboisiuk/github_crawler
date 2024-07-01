@@ -18,10 +18,12 @@
    
 3. Run the crawler
    ```bash
-   python parser.py
+   python src/run.py --keywords openstack nova css --type issues
+   python src/run.py --keywords openstack nova css --proxies 116.108.118.117:4009 65.108.118.117:4009 --type repositories
    ```
 
 4. Run the tests
    ```bash
-   python -m unittest -v tests.py 
+   coverage run -m unittest discover
+   coverage report -m
    ```
