@@ -15,7 +15,7 @@ class TestParser(IsolatedAsyncioTestCase):
         self.input_data = {
             'keywords': ['openstack', 'nova', 'css'],
             'proxies': ['proxy1', 'proxy2'],
-            'type': 'Repositories'
+            'type': 'repositories'
         }
         self.parser = Parser(self.base_url, self.input_data)
         self.client = AsyncMock(AsyncClient)
