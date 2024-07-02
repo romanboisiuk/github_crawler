@@ -86,7 +86,7 @@ class TestParser(IsolatedAsyncioTestCase):
     @patch('src.parser.parser.extract_language_statistics', return_value={'Python': '100%'})
     @patch.object(Parser, 'fetch_html_soups', return_value=['test_resp1', 'test_reps2'])
     async def test_parse_github_data_issues(self, mock_fetch_html_soups, mock_get_lang_stats, mock_get_owner):
-        self.input_data['type'] = 'Issues'
+        self.input_data['type'] = 'issues'
         urls = ['http://test_url1', 'http://test_url2']
         result = await self.parser.parse_github_data(urls)
         expected_result = [

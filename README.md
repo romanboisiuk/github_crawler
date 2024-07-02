@@ -3,6 +3,7 @@
 ## Requirements
 
 - Poetry for Python dependency management
+- Python 3.12
 
 ### Setting Up Your Environment
 

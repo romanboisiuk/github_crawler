@@ -13,7 +13,7 @@ def get_proxy(input_data) -> str | None:
     Returns:
         Optional[str]: A formatted proxy URL if proxies are available, otherwise None.
     """
-    if (proxies := input_data['proxies']) is not None:
+    if proxies := input_data['proxies']:
         return f'http://{choice(proxies)}'
 
     return None

@@ -14,7 +14,7 @@ class TestUtils(TestCase):
         self.input_data = {
             'keywords': ['openstack', 'nova', 'css'],
             'proxies': ['proxy1', 'proxy2'],
-            'type': 'Repositories'
+            'type': 'repositories'
         }
 
     @patch('src.parser.utils.choice')
