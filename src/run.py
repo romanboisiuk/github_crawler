@@ -22,7 +22,7 @@ class GitHubCrawler:
             logger.error('No file path provided. Please provide a file path using the --file_path argument.')
             return
 
-        return parser.parse_args()
+        return args
 
     async def main(self):
         args = self.parse_args()
