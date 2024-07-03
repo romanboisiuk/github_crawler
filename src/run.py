@@ -1,4 +1,5 @@
 import asyncio
+import sys
 from argparse import ArgumentParser
 from json import load, dumps, JSONDecodeError
 from typing import Any
@@ -19,9 +20,9 @@ class GitHubCrawler:
         parser.add_argument('--file_path', type=str, help='The path to the file')
         args = parser.parse_args()
         if not args.file_path:
+            parser.print_help()
             logger.error('No file path provided. Please provide a file path using the --file_path argument.')
-            return
-
+            sys.exit(1)
         return args
 
     async def main(self):
@@ -37,17 +38,17 @@ class GitHubCrawler:
             logger.error(f'Error decoding JSON from file: {args.file_path}')
             return
 
-        input_data: dict[str, Any] = {
-            'keywords': data['keywords'],
-            'proxies': data['proxies'],
-            'type': data['type'],
-        }
         try:
-            validated_data = InputDataModel(**input_data)
+            validated_data = InputDataModel(**data).model_dump()
         except ValidationError as e:
             raise e
 
-        parser: Parser = Parser(self.base_url, validated_data.model_dump())
+        input_data: dict[str, Any] = {
+            'keywords': validated_data['keywords'],
+            'proxies': validated_data['proxies'],
+            'type': validated_data['type'],
+        }
+        parser: Parser = Parser(self.base_url, input_data)
         parsed_data = await parser.run_crawler()
         with open('parse_result.json', 'w') as file:
             file.write(dumps(parsed_data, indent=4))
