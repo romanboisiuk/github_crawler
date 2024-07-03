@@ -39,14 +39,14 @@ class GitHubCrawler:
             return
 
         try:
-            validated_data = InputDataModel(**data).model_dump()
+            validated_data = InputDataModel(**data)
         except ValidationError as e:
             raise e
 
         input_data: dict[str, Any] = {
-            'keywords': validated_data['keywords'],
-            'proxies': validated_data['proxies'],
-            'type': validated_data['type'],
+            'keywords': validated_data.keywords,
+            'proxies': validated_data.proxies,
+            'type': validated_data.type,
         }
         parser: Parser = Parser(self.base_url, input_data)
         parsed_data = await parser.run_crawler()
